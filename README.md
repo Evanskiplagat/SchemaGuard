@@ -12,21 +12,18 @@ SchemaGuard is a Go-based CLI for checking API compatibility between two version
 
 API changes often look harmless in code review while still breaking downstream consumers. Removing response fields, tightening request validation, changing parameter types, or dropping endpoints can introduce production issues for clients that depend on the previous contract. SchemaGuard is intended to catch those risks early and report them clearly.
 
-## Planned Usage
-
-Phase 1 provides only the CLI foundation. OpenAPI comparison is planned for later phases.
+## Usage
 
 ```bash
 schemaguard compare old.yaml new.yaml
 ```
 
-Planned output categories include:
+SchemaGuard accepts YAML or JSON OpenAPI 3.x documents. It exits with `0` when no breaking changes are found, `1` when it finds breaking changes, and `2` for invalid command arguments or specifications.
 
-- removed endpoints or HTTP methods
-- removed response fields
-- newly required request fields
-- incompatible parameter or schema type changes
-- changed status codes and response structures
+The first comparison rules detect:
+
+- removed paths
+- removed HTTP operations
 
 ## Planned CI/CD Integration
 
@@ -44,7 +41,7 @@ Compare OpenAPI Specs
 Compatible? PASS / FAIL
 ```
 
-The initial GitHub Actions workflow in this phase only runs the Go test suite. Automated OpenAPI compatibility checks will be added in later phases.
+The included GitHub Actions workflow runs the Go test suite. Add `schemaguard compare` to a pull request workflow to prevent incompatible API changes from being merged.
 
 ## Development
 
@@ -57,6 +54,7 @@ Run the current CLI:
 ```bash
 go run ./cmd/schemaguard --help
 go run ./cmd/schemaguard --version
+go run ./cmd/schemaguard compare old.yaml new.yaml
 ```
 
 Run tests:
@@ -67,18 +65,15 @@ go test ./...
 
 ## Status
 
-Implemented in Phase 1:
+Implemented:
 
-- Go module and CLI entrypoint
-- `--help` and `--version`
-- basic test coverage
-- Dockerfile foundation
-- GitHub Actions test workflow
+- CLI with `compare`, `--help`, and `--version`
+- OpenAPI 3.x YAML and JSON loading
+- path and HTTP operation removal checks
+- CI-friendly exit codes
+- Dockerfile and GitHub Actions test workflow
 
 Planned for later phases:
 
-- OpenAPI loading and validation
-- compatibility diff engine
-- breaking-change rule evaluation
 - machine-readable JSON output
-- CI-focused reporting and examples
+- response, request, parameter, and schema compatibility rules

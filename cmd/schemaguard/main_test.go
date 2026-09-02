@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -38,7 +41,8 @@ func TestRunHelp(t *testing.T) {
 	output := stdout.String()
 	for _, fragment := range []string{
 		"SchemaGuard checks OpenAPI specifications for breaking API changes.",
-		"schemaguard compare old.yaml new.yaml",
+		"compare <old-spec> <new-spec>",
+		"1  breaking changes found",
 	} {
 		if !strings.Contains(output, fragment) {
 			t.Fatalf("help output missing %q in %q", fragment, output)
@@ -48,4 +52,64 @@ func TestRunHelp(t *testing.T) {
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got %q", stderr.String())
 	}
+}
+
+func TestRunCompareCompatible(t *testing.T) {
+	directory := t.TempDir()
+	oldPath := writeSpec(t, directory, "old.yaml", "openapi: 3.0.3\npaths:\n  /pets:\n    get: {}\n")
+	newPath := writeSpec(t, directory, "new.yaml", "openapi: 3.0.3\npaths:\n  /pets:\n    get: {}\n    post: {}\n")
+
+	var stdout bytes.Buffer
+	err := run([]string{"compare", oldPath, newPath}, &stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run returned error: %v", err)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "Compatible: no breaking changes found." {
+		t.Fatalf("unexpected output: %q", got)
+	}
+}
+
+func TestRunCompareBreakingChanges(t *testing.T) {
+	directory := t.TempDir()
+	oldPath := writeSpec(t, directory, "old.yaml", "openapi: 3.0.3\npaths:\n  /pets:\n    get: {}\n    post: {}\n  /users:\n    get: {}\n")
+	newPath := writeSpec(t, directory, "new.yaml", "openapi: 3.0.3\npaths:\n  /pets:\n    get: {}\n")
+
+	var stdout bytes.Buffer
+	err := run([]string{"compare", oldPath, newPath}, &stdout, &bytes.Buffer{})
+	if exitCode(err) != exitBreakingChange {
+		t.Fatalf("expected exit code %d, got error %v", exitBreakingChange, err)
+	}
+	for _, fragment := range []string{"removed operation POST /pets", "removed path /users"} {
+		if !strings.Contains(stdout.String(), fragment) {
+			t.Fatalf("output missing %q: %s", fragment, stdout.String())
+		}
+	}
+}
+
+func TestRunCompareInvalidSpec(t *testing.T) {
+	directory := t.TempDir()
+	oldPath := writeSpec(t, directory, "old.yaml", "openapi: 2.0\npaths: {}\n")
+	newPath := writeSpec(t, directory, "new.yaml", "openapi: 3.0.3\npaths: {}\n")
+
+	err := run([]string{"compare", oldPath, newPath}, &bytes.Buffer{}, &bytes.Buffer{})
+	if exitCode(err) != exitInvalidInput {
+		t.Fatalf("expected exit code %d, got error %v", exitInvalidInput, err)
+	}
+}
+
+func writeSpec(t *testing.T, directory, name, contents string) string {
+	t.Helper()
+	path := filepath.Join(directory, name)
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatalf("write spec: %v", err)
+	}
+	return path
+}
+
+func exitCode(err error) int {
+	var commandErr *commandError
+	if !errors.As(err, &commandErr) {
+		return 0
+	}
+	return commandErr.code
 }
