@@ -18,7 +18,7 @@ API changes often look harmless in code review while still breaking downstream c
 schemaguard compare old.yaml new.yaml
 ```
 
-SchemaGuard accepts YAML or JSON OpenAPI 3.x documents. It exits with `0` when no breaking changes are found, `1` when it finds breaking changes, and `2` for invalid command arguments or specifications.
+SchemaGuard accepts YAML or JSON OpenAPI 3.x documents. It validates the required `openapi`, `info`, `paths`, operation `responses`, and response `description` fields before comparing files. It exits with `0` when no breaking changes are found, `1` when it finds breaking changes, and `2` for invalid command arguments or specifications.
 
 The first comparison rules detect:
 

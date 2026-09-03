@@ -1,18 +1,30 @@
 package openapi
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
-// Spec is the subset of an OpenAPI document needed for endpoint compatibility checks.
+var openAPIVersionPattern = regexp.MustCompile(`^3\.\d+\.\d+(?:[-+].*)?$`)
+
+// Spec is the subset of an OpenAPI document needed for validation and endpoint checks.
 type Spec struct {
 	OpenAPI string              `yaml:"openapi"`
+	Info    *Info               `yaml:"info"`
 	Paths   map[string]PathItem `yaml:"paths"`
+}
+
+type Info struct {
+	Title   string `yaml:"title"`
+	Version string `yaml:"version"`
 }
 
 type PathItem struct {
@@ -26,8 +38,14 @@ type PathItem struct {
 	Trace   *Operation `yaml:"trace"`
 }
 
-// Operation is intentionally empty: its presence represents a supported HTTP operation.
-type Operation struct{}
+type Operation struct {
+	Responses map[string]Response `yaml:"responses"`
+}
+
+type Response struct {
+	Description *string `yaml:"description"`
+	Ref         string  `yaml:"$ref"`
+}
 
 func Load(path string) (*Spec, error) {
 	contents, err := os.ReadFile(path)
@@ -36,22 +54,77 @@ func Load(path string) (*Spec, error) {
 	}
 
 	var spec Spec
-	if err := yaml.Unmarshal(contents, &spec); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(contents))
+	if err := decoder.Decode(&spec); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, fmt.Errorf("parse %q: document is empty", path)
+		}
 		return nil, fmt.Errorf("parse %q: %w", path, err)
 	}
-	if !strings.HasPrefix(spec.OpenAPI, "3.") {
+	var extra yaml.Node
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err != nil {
+			return nil, fmt.Errorf("parse %q: %w", path, err)
+		}
+		return nil, fmt.Errorf("parse %q: multiple OpenAPI documents are not supported", path)
+	}
+
+	if !openAPIVersionPattern.MatchString(spec.OpenAPI) {
 		return nil, fmt.Errorf("validate %q: expected an OpenAPI 3.x document", path)
+	}
+	if spec.Info == nil {
+		return nil, fmt.Errorf("validate %q: missing required info object", path)
+	}
+	if strings.TrimSpace(spec.Info.Title) == "" {
+		return nil, fmt.Errorf("validate %q: info.title is required", path)
+	}
+	if strings.TrimSpace(spec.Info.Version) == "" {
+		return nil, fmt.Errorf("validate %q: info.version is required", path)
 	}
 	if spec.Paths == nil {
 		return nil, fmt.Errorf("validate %q: missing paths object", path)
 	}
-	for path := range spec.Paths {
+	for path, pathItem := range spec.Paths {
 		if !strings.HasPrefix(path, "/") {
 			return nil, fmt.Errorf("validate %q: path %q must begin with /", path, path)
+		}
+		for _, method := range pathItem.Methods() {
+			operation := pathItem.operation(method)
+			if len(operation.Responses) == 0 {
+				return nil, fmt.Errorf("validate %q: %s %s is missing a responses object", path, method, path)
+			}
+			for status, response := range operation.Responses {
+				if strings.TrimSpace(response.Ref) == "" && response.Description == nil {
+					return nil, fmt.Errorf("validate %q: response %q for %s %s is missing description", path, status, method, path)
+				}
+			}
 		}
 	}
 
 	return &spec, nil
+}
+
+func (p PathItem) operation(method string) *Operation {
+	switch method {
+	case "DELETE":
+		return p.Delete
+	case "GET":
+		return p.Get
+	case "HEAD":
+		return p.Head
+	case "OPTIONS":
+		return p.Options
+	case "PATCH":
+		return p.Patch
+	case "POST":
+		return p.Post
+	case "PUT":
+		return p.Put
+	case "TRACE":
+		return p.Trace
+	default:
+		return nil
+	}
 }
 
 func (p PathItem) Methods() []string {

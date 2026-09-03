@@ -56,8 +56,8 @@ func TestRunHelp(t *testing.T) {
 
 func TestRunCompareCompatible(t *testing.T) {
 	directory := t.TempDir()
-	oldPath := writeSpec(t, directory, "old.yaml", "openapi: 3.0.3\npaths:\n  /pets:\n    get: {}\n")
-	newPath := writeSpec(t, directory, "new.yaml", "openapi: 3.0.3\npaths:\n  /pets:\n    get: {}\n    post: {}\n")
+	oldPath := writeSpec(t, directory, "old.yaml", validYAML("  /pets:\n    get:\n      responses:\n        '200':\n          description: OK\n"))
+	newPath := writeSpec(t, directory, "new.yaml", validYAML("  /pets:\n    get:\n      responses:\n        '200':\n          description: OK\n    post:\n      responses:\n        '201':\n          description: Created\n"))
 
 	var stdout bytes.Buffer
 	err := run([]string{"compare", oldPath, newPath}, &stdout, &bytes.Buffer{})
@@ -71,8 +71,8 @@ func TestRunCompareCompatible(t *testing.T) {
 
 func TestRunCompareBreakingChanges(t *testing.T) {
 	directory := t.TempDir()
-	oldPath := writeSpec(t, directory, "old.yaml", "openapi: 3.0.3\npaths:\n  /pets:\n    get: {}\n    post: {}\n  /users:\n    get: {}\n")
-	newPath := writeSpec(t, directory, "new.yaml", "openapi: 3.0.3\npaths:\n  /pets:\n    get: {}\n")
+	oldPath := writeSpec(t, directory, "old.yaml", validYAML("  /pets:\n    get:\n      responses:\n        '200':\n          description: OK\n    post:\n      responses:\n        '201':\n          description: Created\n  /users:\n    get:\n      responses:\n        '200':\n          description: OK\n"))
+	newPath := writeSpec(t, directory, "new.yaml", validYAML("  /pets:\n    get:\n      responses:\n        '200':\n          description: OK\n"))
 
 	var stdout bytes.Buffer
 	err := run([]string{"compare", oldPath, newPath}, &stdout, &bytes.Buffer{})
@@ -88,13 +88,50 @@ func TestRunCompareBreakingChanges(t *testing.T) {
 
 func TestRunCompareInvalidSpec(t *testing.T) {
 	directory := t.TempDir()
-	oldPath := writeSpec(t, directory, "old.yaml", "openapi: 2.0\npaths: {}\n")
-	newPath := writeSpec(t, directory, "new.yaml", "openapi: 3.0.3\npaths: {}\n")
+	oldPath := writeSpec(t, directory, "old.yaml", "openapi: 2.0\ninfo:\n  title: Old\n  version: 1.0.0\npaths: {}\n")
+	newPath := writeSpec(t, directory, "new.yaml", validYAML(""))
 
 	err := run([]string{"compare", oldPath, newPath}, &bytes.Buffer{}, &bytes.Buffer{})
 	if exitCode(err) != exitInvalidInput {
 		t.Fatalf("expected exit code %d, got error %v", exitInvalidInput, err)
 	}
+}
+
+func TestRunCompareJSON(t *testing.T) {
+	directory := t.TempDir()
+	oldPath := writeSpec(t, directory, "old.json", `{"openapi":"3.1.0","info":{"title":"Pets","version":"1.0.0"},"paths":{"/pets":{"get":{"responses":{"200":{"description":"OK"}}}}}}`)
+	newPath := writeSpec(t, directory, "new.json", `{"openapi":"3.1.0","info":{"title":"Pets","version":"1.1.0"},"paths":{"/pets":{"get":{"responses":{"200":{"description":"OK"}}}}}}`)
+
+	err := run([]string{"compare", oldPath, newPath}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("JSON specs should be accepted: %v", err)
+	}
+}
+
+func TestRunCompareInvalidOperation(t *testing.T) {
+	directory := t.TempDir()
+	oldPath := writeSpec(t, directory, "old.yaml", validYAML("  /pets:\n    get: {}\n"))
+	newPath := writeSpec(t, directory, "new.yaml", validYAML(""))
+
+	err := run([]string{"compare", oldPath, newPath}, &bytes.Buffer{}, &bytes.Buffer{})
+	if exitCode(err) != exitInvalidInput || !strings.Contains(err.Error(), "missing a responses object") {
+		t.Fatalf("expected a clear validation error, got %v", err)
+	}
+}
+
+func TestRunCompareInvalidYAML(t *testing.T) {
+	directory := t.TempDir()
+	oldPath := writeSpec(t, directory, "old.yaml", "openapi: [\n")
+	newPath := writeSpec(t, directory, "new.yaml", validYAML(""))
+
+	err := run([]string{"compare", oldPath, newPath}, &bytes.Buffer{}, &bytes.Buffer{})
+	if exitCode(err) != exitInvalidInput || !strings.Contains(err.Error(), "parse") {
+		t.Fatalf("expected a parse error, got %v", err)
+	}
+}
+
+func validYAML(paths string) string {
+	return "openapi: 3.0.3\ninfo:\n  title: Example API\n  version: 1.0.0\npaths:\n" + paths
 }
 
 func writeSpec(t *testing.T, directory, name, contents string) string {
