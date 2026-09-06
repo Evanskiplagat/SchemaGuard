@@ -86,6 +86,28 @@ func TestRunCompareBreakingChanges(t *testing.T) {
 	}
 }
 
+func TestRunCompareResponseBreakingChanges(t *testing.T) {
+	directory := t.TempDir()
+	oldPath := writeSpec(t, directory, "old.yaml", validYAML("  /pets:\n    get:\n      responses:\n        '200':\n          description: OK\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  id:\n                    type: string\n                  owner:\n                    type: object\n                    properties:\n                      name:\n                        type: string\n            text/plain:\n              schema:\n                type: string\n        '404':\n          description: Not found\n"))
+	newPath := writeSpec(t, directory, "new.yaml", validYAML("  /pets:\n    get:\n      responses:\n        '200':\n          description: OK\n          content:\n            application/json:\n              schema:\n                type: object\n                properties:\n                  id:\n                    type: integer\n                  owner:\n                    type: object\n                    properties: {}\n"))
+
+	var stdout bytes.Buffer
+	err := run([]string{"compare", oldPath, newPath}, &stdout, &bytes.Buffer{})
+	if exitCode(err) != exitBreakingChange {
+		t.Fatalf("expected exit code %d, got error %v", exitBreakingChange, err)
+	}
+	for _, fragment := range []string{
+		"removed response 404 for GET /pets",
+		"removed response media type text/plain for 200 GET /pets",
+		"changed response property type from string to integer for id in 200 GET /pets (application/json)",
+		"removed response property owner.name from 200 GET /pets (application/json)",
+	} {
+		if !strings.Contains(stdout.String(), fragment) {
+			t.Fatalf("output missing %q: %s", fragment, stdout.String())
+		}
+	}
+}
+
 func TestRunCompareInvalidSpec(t *testing.T) {
 	directory := t.TempDir()
 	oldPath := writeSpec(t, directory, "old.yaml", "openapi: 2.0\ninfo:\n  title: Old\n  version: 1.0.0\npaths: {}\n")

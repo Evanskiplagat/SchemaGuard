@@ -24,6 +24,9 @@ The first comparison rules detect:
 
 - removed paths
 - removed HTTP operations
+- removed response status codes and media types
+- removed nested response properties
+- changed response property types
 
 ## Planned CI/CD Integration
 

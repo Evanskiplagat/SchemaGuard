@@ -45,6 +45,18 @@ type Operation struct {
 type Response struct {
 	Description *string `yaml:"description"`
 	Ref         string  `yaml:"$ref"`
+	Content     map[string]MediaType `yaml:"content"`
+}
+
+type MediaType struct {
+	Schema *Schema `yaml:"schema"`
+}
+
+type Schema struct {
+	Ref        string             `yaml:"$ref"`
+	Type       interface{}        `yaml:"type"`
+	Properties map[string]*Schema `yaml:"properties"`
+	Items      *Schema            `yaml:"items"`
 }
 
 func Load(path string) (*Spec, error) {
@@ -89,7 +101,7 @@ func Load(path string) (*Spec, error) {
 			return nil, fmt.Errorf("validate %q: path %q must begin with /", path, path)
 		}
 		for _, method := range pathItem.Methods() {
-			operation := pathItem.operation(method)
+			operation := pathItem.Operation(method)
 			if len(operation.Responses) == 0 {
 				return nil, fmt.Errorf("validate %q: %s %s is missing a responses object", path, method, path)
 			}
@@ -104,7 +116,7 @@ func Load(path string) (*Spec, error) {
 	return &spec, nil
 }
 
-func (p PathItem) operation(method string) *Operation {
+func (p PathItem) Operation(method string) *Operation {
 	switch method {
 	case "DELETE":
 		return p.Delete
@@ -125,6 +137,28 @@ func (p PathItem) operation(method string) *Operation {
 	default:
 		return nil
 	}
+}
+
+// Types returns the schema's declared types in a normalized, sorted form.
+// OpenAPI 3.0 uses a string, while OpenAPI 3.1 also permits an array of types.
+func (s *Schema) Types() []string {
+	if s == nil {
+		return nil
+	}
+
+	var types []string
+	switch value := s.Type.(type) {
+	case string:
+		types = append(types, value)
+	case []interface{}:
+		for _, item := range value {
+			if typeName, ok := item.(string); ok {
+				types = append(types, typeName)
+			}
+		}
+	}
+	sort.Strings(types)
+	return types
 }
 
 func (p PathItem) Methods() []string {
