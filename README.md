@@ -20,6 +20,8 @@ schemaguard compare old.yaml new.yaml
 
 SchemaGuard accepts YAML or JSON OpenAPI 3.x documents. It validates the required `openapi`, `info`, `paths`, operation `responses`, and response `description` fields before comparing files. It exits with `0` when no breaking changes are found, `1` when it finds breaking changes, and `2` for invalid command arguments or specifications.
 
+Local schema references such as `#/components/schemas/Pet` are resolved before comparison in both YAML and JSON documents, including references nested in properties and array items. Missing, malformed, circular, and external file or URL references are reported as invalid specifications. External references are not loaded.
+
 The first comparison rules detect:
 
 - removed paths

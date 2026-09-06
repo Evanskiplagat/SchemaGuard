@@ -130,6 +130,71 @@ func TestRunCompareJSON(t *testing.T) {
 	}
 }
 
+func TestRunCompareReferencedYAMLResponseSchema(t *testing.T) {
+	directory := t.TempDir()
+	oldPath := writeSpec(t, directory, "old.yaml", validYAML("  /pets:\n    get:\n      responses:\n        '200':\n          description: OK\n          content:\n            application/json:\n              schema:\n                $ref: '#/components/schemas/Pet'\ncomponents:\n  schemas:\n    Pet:\n      type: object\n      properties:\n        id:\n          type: string\n        name:\n          type: string\n"))
+	newPath := writeSpec(t, directory, "new.yaml", validYAML("  /pets:\n    get:\n      responses:\n        '200':\n          description: OK\n          content:\n            application/json:\n              schema:\n                $ref: '#/components/schemas/Pet'\ncomponents:\n  schemas:\n    Pet:\n      type: object\n      properties:\n        id:\n          type: string\n"))
+
+	var stdout bytes.Buffer
+	err := run([]string{"compare", oldPath, newPath}, &stdout, &bytes.Buffer{})
+	if exitCode(err) != exitBreakingChange {
+		t.Fatalf("expected exit code %d, got error %v", exitBreakingChange, err)
+	}
+	if !strings.Contains(stdout.String(), "removed response property name from 200 GET /pets (application/json)") {
+		t.Fatalf("referenced YAML schema change was not reported: %s", stdout.String())
+	}
+}
+
+func TestRunCompareReferencedJSONResponseSchema(t *testing.T) {
+	directory := t.TempDir()
+	oldPath := writeSpec(t, directory, "old.json", `{"openapi":"3.1.0","info":{"title":"Pets","version":"1.0.0"},"paths":{"/pets":{"get":{"responses":{"200":{"description":"OK","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Pet"}}}}}}}},"components":{"schemas":{"Pet":{"type":"object","properties":{"id":{"type":"string"},"age":{"type":"integer"}}}}}}`)
+	newPath := writeSpec(t, directory, "new.json", `{"openapi":"3.1.0","info":{"title":"Pets","version":"1.1.0"},"paths":{"/pets":{"get":{"responses":{"200":{"description":"OK","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Pet"}}}}}}}},"components":{"schemas":{"Pet":{"type":"object","properties":{"id":{"type":"string"},"age":{"type":"number"}}}}}}`)
+
+	var stdout bytes.Buffer
+	err := run([]string{"compare", oldPath, newPath}, &stdout, &bytes.Buffer{})
+	if exitCode(err) != exitBreakingChange {
+		t.Fatalf("expected exit code %d, got error %v", exitBreakingChange, err)
+	}
+	if !strings.Contains(stdout.String(), "changed response property type from integer to number for age in 200 GET /pets (application/json)") {
+		t.Fatalf("referenced JSON schema change was not reported: %s", stdout.String())
+	}
+}
+
+func TestRunCompareInvalidReferences(t *testing.T) {
+	tests := []struct {
+		name     string
+		ref      string
+		wantText string
+	}{
+		{name: "missing", ref: "#/components/schemas/Missing", wantText: "missing local $ref target"},
+		{name: "malformed", ref: "#/components/schemas/Pet~2", wantText: "malformed $ref"},
+		{name: "external", ref: "other.yaml#/components/schemas/Pet", wantText: "unsupported external $ref"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			directory := t.TempDir()
+			oldPath := writeSpec(t, directory, "old.yaml", validYAML("  /pets:\n    get:\n      responses:\n        '200':\n          description: OK\n          content:\n            application/json:\n              schema:\n                $ref: '"+test.ref+"'\n"))
+			newPath := writeSpec(t, directory, "new.yaml", validYAML(""))
+
+			err := run([]string{"compare", oldPath, newPath}, &bytes.Buffer{}, &bytes.Buffer{})
+			if exitCode(err) != exitInvalidInput || !strings.Contains(err.Error(), test.wantText) {
+				t.Fatalf("expected invalid reference error containing %q, got %v", test.wantText, err)
+			}
+		})
+	}
+}
+
+func TestRunCompareCircularReference(t *testing.T) {
+	directory := t.TempDir()
+	oldPath := writeSpec(t, directory, "old.yaml", validYAML("  /pets:\n    get:\n      responses:\n        '200':\n          description: OK\n          content:\n            application/json:\n              schema:\n                $ref: '#/components/schemas/Pet'\ncomponents:\n  schemas:\n    Pet:\n      $ref: '#/components/schemas/Pet'\n"))
+	newPath := writeSpec(t, directory, "new.yaml", validYAML(""))
+
+	err := run([]string{"compare", oldPath, newPath}, &bytes.Buffer{}, &bytes.Buffer{})
+	if exitCode(err) != exitInvalidInput || !strings.Contains(err.Error(), "circular $ref") {
+		t.Fatalf("expected circular reference error, got %v", err)
+	}
+}
+
 func TestRunCompareInvalidOperation(t *testing.T) {
 	directory := t.TempDir()
 	oldPath := writeSpec(t, directory, "old.yaml", validYAML("  /pets:\n    get: {}\n"))
