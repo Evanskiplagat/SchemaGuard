@@ -2,9 +2,9 @@
 
 SchemaGuard is a Go command-line tool that compares OpenAPI specifications and reports changes that may break existing API consumers.
 
-## What SchemaGuard Is
+## What It Does
 
-SchemaGuard is a Go-based CLI for checking API compatibility between two versions of an OpenAPI 3.x specification. The goal is to give developers and CI pipelines a fast way to detect breaking changes before they are merged or deployed.
+SchemaGuard checks compatibility between two OpenAPI 3.x specifications. It can run locally or in a CI pipeline before an API change is merged or deployed.
 
 ## Why It Exists
 
