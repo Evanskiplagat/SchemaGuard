@@ -1,8 +1,6 @@
 # SchemaGuard
 
-Catch breaking API changes before they reach production.
-
-SchemaGuard compares OpenAPI specifications and identifies changes that may break existing API consumers.
+SchemaGuard is a Go command-line tool that compares OpenAPI specifications and reports changes that may break existing API consumers.
 
 ## What SchemaGuard Is
 
@@ -10,7 +8,7 @@ SchemaGuard is a Go-based CLI for checking API compatibility between two version
 
 ## Why It Exists
 
-API changes often look harmless in code review while still breaking downstream consumers. Removing response fields, tightening request validation, changing parameter types, or dropping endpoints can introduce production issues for clients that depend on the previous contract. SchemaGuard is intended to catch those risks early and report them clearly.
+Changes such as removed endpoints, response fields, status codes, or media types can break clients that depend on an earlier API contract. SchemaGuard makes these changes visible during local development or CI validation.
 
 ## Usage
 
@@ -78,7 +76,8 @@ Implemented:
 - CI-friendly exit codes
 - Dockerfile and GitHub Actions test workflow
 
-Planned for later phases:
+Planned:
 
 - machine-readable JSON output
-- response, request, parameter, and schema compatibility rules
+- request and parameter compatibility rules
+- additional schema compatibility rules
